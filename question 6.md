@@ -1,44 +1,56 @@
 ### Bottleneck 1 — N+1 queries (related-object lazy loading)
 
-Symptom: Each serialized task triggers another DB query to fetch related objects (e.g., created_by, related profiles).
+**Symptom:** Each serialized task triggers another DB query to fetch related objects (e.g., created_by, related profiles).
 
-Fixes / optimizations:
+**Fixes / optimizations:**
 --Use select_related() for ForeignKey / OneToOne to fetch joins in one query
+
 for example
+
+```python
 Task.objects.filter(created_by=user).select_related("created_by")
+```
+
 ---Use prefetch_related() for ManyToMany or reverse FK:
+
 for example :
+
+```python
 qs = Task.objects.prefetch_related(Prefetch("comments", queryset=Comment.objects.select_related("author")))
-
-
+```
 
 #### Bottleneck 2 — Large data payloads and expensive serialization####
 
-Symptom: Returning many tasks with large description or nested serializers causes heavy CPU and IO.
+**Symptom:** Returning many tasks with large description or nested serializers causes heavy CPU and IO.
+
 ---Fixes / optimizations:
 Paginate responses (DRF PageNumberPagination or LimitOffsetPagination) so the server serializes fewer objects per request.
-Use lightweight serializers for list endpoints (avoid heavy nested fields or SerializerMethodField which can run queries). Example:
+
+Use lightweight serializers for list endpoints (avoid heavy nested fields or SerializerMethodField which can run queries).
+
 for example:
+
+```python
 class TaskListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
         fields = ("id", "title", "status", "created_at")
+```
 
 ### Then in the viewset:##
 
+```python
 def get_serializer_class(self):
     return TaskListSerializer if self.action == "list" else TaskSerializer
+```
 
 ###Use .only() / .defer() or .values() to fetch only the columns you need:###
 
-   Task.objects.filter(...).only("id", "title", "status", "created_at")
-
-
-
-
+```python
+Task.objects.filter(...).only("id", "title", "status", "created_at")
+```
 
 ### Bottleneck 3 — Missing DB indexes, inefficient queries, or expensive annotations###
-
 
 ----Symptom: Filters or ordering on non-indexed columns are slow; annotations (counts/aggregates) run over many rows.
 Fixes / optimizations:
